@@ -1,0 +1,183 @@
+﻿@* @page "/counter"
+@rendermode InteractiveServer
+
+<PageTitle>Counter</PageTitle>
+
+<h1>Counter</h1>
+
+<p role="status">Current count: @currentCount</p>
+
+<button class="btn btn-primary" @onclick="IncrementCount">Click me</button>
+
+@code {
+    private int currentCount = 0;
+
+    private void IncrementCount()
+    {
+        currentCount++;
+    }
+}
+ *@
+
+@page "/counter"
+@rendermode InteractiveServer
+@using SashaPr.Models
+@using SashaPr.Data
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Forms
+@inject SashaPrContext _context
+
+<h3>Добавление/Редактирование книги</h3>
+
+@if (isAdded || isEdited)
+{
+    <p style="color: green;">@(isAdded ? "Книга успешно добавлена!" : "Книга успешно изменена!")</p>
+}
+
+<form @onsubmit="SaveBook">
+    <div class="form-group">
+        <label for="author">Автор:</label>
+        <input type="text" class="form-control" id="author" @bind="book.Author">
+    </div>
+    <div class="form-group">
+        <label for="title">Название:</label>
+        <input type="text" class="form-control" id="title" @bind="book.Title">
+    </div>
+    <div class="form-group">
+        <label for="year">Год публикации:</label>
+        <input type="text" class="form-control" id="year" @bind="book.YearOfPub">
+    </div>
+    <div class="form-group">
+        <label for="image">Изображение книги:</label>
+        <InputFile id="image" OnChange="HandleFileSelected" />
+    </div>
+    <button type="submit" class="btn btn-primary">@((editingBook != null) ? "Сохранить" : "Добавить")</button>
+    @if (editingBook != null)
+    {
+        <button type="button" class="btn btn-secondary" @onclick="CancelEdit">Отмена</button>
+    }
+</form>
+
+<h3>Список книг</h3>
+@if (books != null)
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Изображение</th>
+                <th>Название</th>
+                <th>Автор</th>
+                <th>Год публикации</th>
+                <th>Действия</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in books)
+            {
+                <tr>
+                    <td>
+                        @if (item.Picture != null)
+                        {
+                            <img src="@($"data:image/png;base64,{Convert.ToBase64String(item.Picture)}")" alt="Изображение книги" style="max-width: 100px;" />
+                        }
+                        else
+                        {
+                            <span>No Image</span>
+                        }
+                    </td>
+                    <td>@item.Title</td>
+                    <td>@item.Author</td>
+                    <td>@item.YearOfPub</td>
+                    <td>
+                        <button class="btn btn-primary" @onclick="() => EditBook(item)">Редактировать</button>
+                        <button class="btn btn-danger" @onclick="() => DeleteBook(item)">Удалить</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private DBModelBook book = new DBModelBook();
+    private DBModelBook editingBook;
+    private bool isAdded = false;
+    private bool isEdited = false;
+    private List<DBModelBook> books;
+
+    private byte[] pictureBuffer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBooks();
+    }
+
+    private async Task LoadBooks()
+    {
+        books = await _context.DBModelBook.ToListAsync();
+    }
+
+    private async Task SaveBook()
+    {
+        if (editingBook != null)
+        {
+            editingBook.Author = book.Author;
+            editingBook.Title = book.Title;
+            editingBook.YearOfPub = book.YearOfPub;
+            if (pictureBuffer != null)
+            {
+                editingBook.Picture = pictureBuffer;
+            }
+            _context.DBModelBook.Update(editingBook);
+            isEdited = true;
+            editingBook = null; // Добавим эту строку для сброса редактируемой книги
+        }
+        else
+        {
+            book.Picture = pictureBuffer;
+            _context.DBModelBook.Add(book);
+            isAdded = true;
+        }
+        await _context.SaveChangesAsync();
+        book = new DBModelBook();
+        await LoadBooks();
+        isAdded = false;
+        isEdited = false;
+        editingBook = null;
+    }
+
+    private async Task DeleteBook(DBModelBook book)
+    {
+        _context.DBModelBook.Remove(book);
+        await _context.SaveChangesAsync();
+        await LoadBooks();
+    }
+
+    private async Task EditBook(DBModelBook selectedBook)
+    {
+        editingBook = selectedBook;
+        book = new DBModelBook
+            {
+                Author = selectedBook.Author,
+                Title = selectedBook.Title,
+                YearOfPub = selectedBook.YearOfPub
+            };
+    }
+
+    private async Task CancelEdit()
+    {
+        editingBook = null;
+        book = new DBModelBook();
+    }
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file != null)
+        {
+            var ms = new MemoryStream();
+            await file.OpenReadStream().CopyToAsync(ms);
+            pictureBuffer = ms.ToArray();
+        }
+    }
+}
